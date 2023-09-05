@@ -1,0 +1,57 @@
+
+
+void read_sysconfig(char argv0[], char filename[])
+
+
+{
+ FILE *config_file = fopen(filename, "r");
+    if (config_file == NULL) {
+        perror("Error opening sysconfig file");
+        exit(EXIT_FAILURE);
+    }
+
+    struct Device devices[MAX_DEVICES];
+    int device_count = 0;
+    unsigned long long time_quantum = DEFAULT_TIME_QUANTUM;
+
+    char line[MAX_LINE_LENGTH];
+    while (fgets(line, sizeof(line), config_file) != NULL) {
+        // Skip comment lines and empty lines
+        if (line[0] == CHAR_COMMENT || line[0] == '\n') {
+            continue;
+        }
+
+        char name[MAX_LINE_LENGTH];
+        unsigned long long read_speed, write_speed;
+
+        // Parse the line into device information
+        if (sscanf(line, "device %s %lluBps %lluBps", name, &read_speed, &write_speed) == 3) {
+            if (device_count < MAX_DEVICES) {
+                strcpy(devices[device_count].name, name);
+                devices[device_count].read_speed = read_speed;
+                devices[device_count].write_speed = write_speed;
+                device_count++;
+            } else {
+                printf("Maximum number of devices exceeded. Ignoring additional devices.\n");
+            }
+        }
+
+        // Parse the time quantum
+        else if (sscanf(line, "timequantum %lluusec", &time_quantum) == 1) {
+            // Time quantum found
+        }
+    }
+
+    // Close the config file
+    fclose(config_file);
+
+    // Print the parsed configuration for verification
+    printf("Device Information:\n");
+    for (int i = 0; i < device_count; i++) {
+        printf("Device: %s, Read Speed: %llu Bps, Write Speed: %llu Bps\n",
+               devices[i].name, devices[i].read_speed, devices[i].write_speed);
+    }
+
+    printf("Time Quantum: %llu usec\n", time_quantum);
+}
+
