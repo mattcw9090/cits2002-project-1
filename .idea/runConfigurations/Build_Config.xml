@@ -1,0 +1,9 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Build Config" type="CppFileRunConfiguration" factoryName="CppFileRunConfiguration" PROGRAM_PARAMS="sysconfig-file command-file" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="CITS2002 Project" TARGET_NAME="myscheduler.c" CONFIG_NAME="Build Config">
+    <option name="compilerOptions" value="-std=c11 -Wall -Werror" />
+    <option name="sourceFile" value="myscheduler.c" />
+    <method v="2">
+      <option name="com.jetbrains.cidr.cpp.runfile.CppFileBuildBeforeRunTaskProvider$BasicBuildBeforeRunTask" enabled="true" />
+    </method>
+  </configuration>
+</component>
