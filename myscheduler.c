@@ -6,8 +6,10 @@
 //  Student1:   22974046   Matthew Chew
 //  Student2:   STUDENT-NUMBER2   Darryl Max
 
+//  Compile with:  cc -std=c11 -Wall -Werror -o myscheduler myscheduler.c
 
 //  CONSTANTS
+#define MAX_LINE_LENGTH                 256
 #define MAX_DEVICES                     4
 #define MAX_DEVICE_NAME                 20
 #define MAX_COMMANDS                    10
@@ -36,8 +38,8 @@ int time_quantum = DEFAULT_TIME_QUANTUM;
 // Device Struct
 typedef struct {
     char name[MAX_DEVICE_NAME];
-    int readSpeed;
-    int writeSpeed;
+    unsigned long long readSpeed;
+    unsigned long long writeSpeed;
     int priority;
 } Device;
 
@@ -47,7 +49,7 @@ typedef struct {
     char device_name[MAX_DEVICE_NAME]; // only for "read" or "write"
     int time; // time in usecs to trigger the operation
     int duration; // only for "sleep"
-    int bytes; // only for "read" or "write"
+    unsigned long long bytes; // only for "read" or "write"
     char child_process_name[MAX_COMMAND_NAME]; // only for "spawn"
 } Operation;
 
@@ -59,6 +61,12 @@ typedef struct {
     Operation operations[MAX_SYSCALLS_PER_PROCESS];
     int operation_count;
 } Process;
+
+// Device Count
+int device_count = 0;
+
+// Process Definition Count
+int process_count = 0;
 
 // Array of devices
 Device devices_array[MAX_DEVICES];
@@ -86,24 +94,18 @@ void read_sysconfig(char argv0[], char filename[]) {
         exit(EXIT_FAILURE);
     }
 
-    char line[256];
-    int device_count = 0;
+    char line[MAX_LINE_LENGTH];
 
     while (fgets(line, sizeof(line), file)) {
 
-        // Remove newline character, if present
-        if (line[strlen(line) - 1] == '\n') {
-            line[strlen(line) - 1] = '\0';
-        }
-
-        // Ignore comment lines
-        if (line[0] == CHAR_COMMENT) {
+        // Skip comment lines and empty lines
+        if (line[0] == CHAR_COMMENT || line[0] == '\n') {
             continue;
         }
 
         // Handle 'device' lines
         if (strncmp(line, "device", 6) == 0) {
-            sscanf(line, "device %s %iBps %iBps", devices_array[device_count].name, &devices_array[device_count].readSpeed, &devices_array[device_count].writeSpeed);
+            sscanf(line, "device %s %lluBps %lluBps", devices_array[device_count].name, &devices_array[device_count].readSpeed, &devices_array[device_count].writeSpeed);
             device_count++;
         }
 
@@ -132,28 +134,22 @@ void read_commands(char argv0[], char filename[]) {
         exit(EXIT_FAILURE);
     }
 
-    char line[256];
-    int process_count = 0;
+    char line[MAX_LINE_LENGTH];
 
     while (fgets(line, sizeof(line), file)) {
 
-        // Remove newline character, if present
-        if (line[strlen(line) - 1] == '\n') {
-            line[strlen(line) - 1] = '\0';
-        }
-
-        // Ignore comment lines
-        if (line[0] == CHAR_COMMENT) {
+        // Skip comment lines and empty lines
+        if (line[0] == CHAR_COMMENT || line[0] == '\n') {
             continue;
         }
 
         // New process, register its definition
         if (line[0] != '\t') {
-            strncpy(processes[process_count].name, line, MAX_COMMAND_NAME);
+            sscanf(line, "%s", processes[process_count].name);
             processes[process_count].operation_count = 0;
             process_count++;
         }
-        // Operation for the latest process
+            // Operation for the latest process
         else {
             Process *current_process = &processes[process_count - 1];
             Operation *next_operation_slot = &current_process->operations[current_process->operation_count];
@@ -170,7 +166,7 @@ void read_commands(char argv0[], char filename[]) {
                 sscanf(line, "\t%iusecs %s", &next_operation_slot->time, next_operation_slot->name);
             }
             else if (strcmp(operationName, "read") == 0 || strcmp(operationName, "write") == 0) {
-                sscanf(line, "\t%iusecs %s %s %iB", &next_operation_slot->time, next_operation_slot->name, next_operation_slot->device_name, &next_operation_slot->bytes);
+                sscanf(line, "\t%iusecs %s %s %lluB", &next_operation_slot->time, next_operation_slot->name, next_operation_slot->device_name, &next_operation_slot->bytes);
             }
             else if (strcmp(operationName, "spawn") == 0) {
                 sscanf(line, "\t%iusecs %s %s", &next_operation_slot->time, next_operation_slot->name, next_operation_slot->child_process_name);
@@ -182,20 +178,6 @@ void read_commands(char argv0[], char filename[]) {
         }
     }
     fclose(file);
-
-    // TEST CODE: Replace this with your actual implementation
-    for (int i = 0; i < process_count; ++i) {
-        printf("Process name: %s\n", processes[i].name);
-            for (int j = 0; j < processes[i].operation_count; ++j) {
-                printf("\tOperation: %s, Time: %i, Device: %s, Amount: %i, Duration: %i, Child Process: %s\n",
-                       processes[i].operations[j].name,
-                       processes[i].operations[j].time,
-                       processes[i].operations[j].device_name,
-                       processes[i].operations[j].bytes,
-                       processes[i].operations[j].duration,
-                       processes[i].operations[j].child_process_name);
-            }
-    }
 }
 
 
@@ -222,6 +204,31 @@ int main(int argc, char *argv[]) {
 
 //  EXECUTE COMMANDS, STARTING AT FIRST IN command-file, UNTIL NONE REMAIN
     execute_commands();
+
+	// TEST CODE: Print devices to console
+	printf("Loaded devices:\n");
+	for (int i = 0; i < device_count; ++i) {
+		printf("\tDevice name: %s, Read speed: %llu Bps, Write speed: %llu, Priority: %i Bps\n",
+			   devices_array[i].name,
+			   devices_array[i].readSpeed,
+			   devices_array[i].writeSpeed,
+			   devices_array[i].priority);
+	}
+	printf("Time Quantum: %i\n", time_quantum);
+
+	// TEST CODE: Print defined processes to the console
+	for (int i = 0; i < process_count; ++i) {
+		printf("Process name: %s\n", processes[i].name);
+		for (int j = 0; j < processes[i].operation_count; ++j) {
+			printf("\tOperation: %s, Time: %i, Device: %s, Bytes: %llu, Duration: %i, Child Process: %s\n",
+				   processes[i].operations[j].name,
+				   processes[i].operations[j].time,
+				   processes[i].operations[j].device_name,
+				   processes[i].operations[j].bytes,
+				   processes[i].operations[j].duration,
+				   processes[i].operations[j].child_process_name);
+		}
+	}
 
 //  PRINT THE PROGRAM'S RESULTS
     printf("measurements  %i  %i\n", 0, 0);
