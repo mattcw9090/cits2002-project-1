@@ -1,0 +1,58 @@
+def execute_commands():
+	init_scheduler()
+
+	while process_created != process_terminated:
+		if ready_queue is not empty:
+			running process = ready_queue.poll()
+			execute(running process)
+		else:
+			unblock any sleeping processes
+            unblock any processes waiting for all their spawned processes (children) to terminate
+            unblock any completed I/O
+            commence any pending I/O
+            commence/resume the next READY process
+            otherwise the CPU remains idle...
+
+
+
+def execute(process):
+	if cpu time + time quantum >= elapsed syscall time:
+		cpu time = elapsed syscall time
+		synchronize_other_components(elapsed syscall time - cpu time)
+		perform(syscall)
+	else:
+		cpu time += time quantum
+		synchronize_other_components(time quantum)
+		put process back to ready queue
+
+
+def perform(syscall):
+	if syscall is exit:
+		release_id()
+		total_cpu_time += cpu time
+		process_terminated++
+	else if syscall is sleep:
+		put process in blocked queue (sleep)
+		blocked timer = sleep duration
+	else if syscall is read/write:
+		put process in blocked queue (I/O)
+		process's I/O time = Bytes to read/write / Devices's read/write speed
+	else if syscall is spawn or wait:
+		implement later
+
+def synchronize_other_components(elapsed_time):
+	system_timer += elapsed_time
+	completed I/O Processes = all processes in I/O PQ in which its sum is <= elapsed_time
+
+	for each completed I/O Process:
+		completed_sleep_processes = all sleep processes in Sleep PQ in which its own individual timers <= I/O time
+		enqueue completed_sleep_processes into ready_queue
+		dequeue completed_sleep_processes from Sleep PQ
+		update sleep timers of all other sleep processes in Sleep PQ by I/O time
+
+		enqueue completed I/O Process into ready_queue
+		dequeue completed I/O Process from Sleep PQ
+
+	time_remaining = elapsed_time - sum(completed I/O Processes time)
+	update sleep timers of all other sleep processes in Sleep PQ by time_remaining
+	update I/O time of first I/O processes in I/I PQ by time_remaining

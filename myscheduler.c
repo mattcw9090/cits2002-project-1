@@ -1,12 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
+// PROJECT DESCRIPTION
 //  CITS2002 Project 1 2023
 //  Student1:   22974046   Matthew Chew
-//  Student2:   STUDENT-NUMBER2   Darryl Max
-
-//  Compile with:  cc -std=c11 -Wall -Werror -o myscheduler myscheduler.c
+//  Student2:   23477648   Darryl Max
 
 //  CONSTANTS
 #define MAX_LINE_LENGTH                 256
@@ -30,20 +30,21 @@
 
 #define CHAR_COMMENT                    '#'
 
-//  ----------------------------------------------------------------------
-
-// Time Quantum
+// Global Variables
 int time_quantum = DEFAULT_TIME_QUANTUM;
+int system_timer = 0; // in microseconds
+int device_count = 0;
+int command_count = 0;
+int ready_queue_count = 0;
+bool used_ids[MAX_RUNNING_PROCESSES] = {false};
 
-// Device Struct
+// Structs
 typedef struct {
     char name[MAX_DEVICE_NAME];
     unsigned long long readSpeed;
     unsigned long long writeSpeed;
     int priority;
 } Device;
-
-// Operation Struct
 typedef struct {
     char name[10]; // operation name: "sleep", "exit", "read", "write", "spawn", "wait"
     char device_name[MAX_DEVICE_NAME]; // only for "read" or "write"
@@ -51,30 +52,23 @@ typedef struct {
     int duration; // only for "sleep"
     unsigned long long bytes; // only for "read" or "write"
     char child_process_name[MAX_COMMAND_NAME]; // only for "spawn"
-} Operation;
-
-// Process Struct
+} Syscall;
 typedef struct {
-    int id;
-    char name[MAX_COMMAND_NAME];
-    char processState[10];
-    Operation operations[MAX_SYSCALLS_PER_PROCESS];
-    int operation_count;
+	char name[MAX_COMMAND_NAME];
+	int syscall_count;
+	Syscall syscalls[MAX_SYSCALLS_PER_PROCESS];
+} Command;
+typedef struct {
+	int id;
+	Command *command;
+	char processState[10];
+	int syscall_index;
+	int cpu_time;
 } Process;
 
-// Device Count
-int device_count = 0;
-
-// Process Definition Count
-int process_count = 0;
-
-// Array of devices
+// Arrays of Structs
 Device devices_array[MAX_DEVICES];
-
-// Array of Processes
-Process processes[MAX_RUNNING_PROCESSES];
-
-// Ready Queue
+Command command_definitions[MAX_COMMANDS];
 Process ready_queue[MAX_RUNNING_PROCESSES];
 
 // Helper Functions
@@ -83,10 +77,51 @@ int compare_devices_read_speed (const void *a, const void *b) {
     const Device *deviceB = (const Device *)b;
     return deviceB->readSpeed - deviceA->readSpeed;
 }
+int allocate_lowest_id() {
+	for (int i = 0; i < MAX_RUNNING_PROCESSES; ++i) {
+		if (!used_ids[i]) {
+			used_ids[i] = true;
+			return i;
+		}
+	}
+	// Handle error: no available IDs (this shouldn't happen if the code is correct)
+	fprintf(stderr, "Error: No available IDs.\n");
+	exit(EXIT_FAILURE);
+}
+void release_id(int id) {
+	if (id >= 0 && id < MAX_RUNNING_PROCESSES) {
+		used_ids[id] = false;
+	}
+}
+Process initialize_process(char command_string[]) {
+	// Look for the command in the existing array of commands
+	Command *selected_command = NULL;
+	for (int i = 0; i < command_count; ++i) {
+		if (strcmp(command_definitions[i].name, command_string) == 0) {
+			selected_command = &command_definitions[i];
+			break;
+		}
+	}
+
+	// If command is not found, handle the error
+	if (selected_command == NULL) {
+		fprintf(stderr, "Command '%s' not found.\n", command_string);
+		exit(EXIT_FAILURE);
+	}
+
+	// Initialize a new Process structure
+	Process new_process;
+	new_process.id = allocate_lowest_id();
+	new_process.command = selected_command;
+	new_process.syscall_index = 0;
+	new_process.cpu_time = 0;
+	strcpy(new_process.processState, "READY");
+
+	return new_process;
+}
 
 // Functions used by main()
 void read_sysconfig(char argv0[], char filename[]) {
-
     FILE *file = fopen(filename, "r");
 
     if (file == NULL) {
@@ -125,7 +160,6 @@ void read_sysconfig(char argv0[], char filename[]) {
         devices_array[i].priority = i + 1;  // Priority starts from 1 for the highest read speed
     }
 }
-
 void read_commands(char argv0[], char filename[]) {
 
     FILE *file = fopen(filename, "r");
@@ -143,16 +177,16 @@ void read_commands(char argv0[], char filename[]) {
             continue;
         }
 
-        // New process, register its definition
+        // New Command, register its definition
         if (line[0] != '\t') {
-            sscanf(line, "%s", processes[process_count].name);
-            processes[process_count].operation_count = 0;
-            process_count++;
+            sscanf(line, "%s", command_definitions[command_count].name);
+			command_definitions[command_count].syscall_count = 0;
+            command_count++;
         }
-            // Operation for the latest process
+		// Operation for the latest process
         else {
-            Process *current_process = &processes[process_count - 1];
-            Operation *next_operation_slot = &current_process->operations[current_process->operation_count];
+            Command *current_command = &command_definitions[command_count - 1];
+            Syscall *next_operation_slot = &current_command->syscalls[current_command->syscall_count];
 
             // Initial scan to identify the operation name
             int initialTime;
@@ -174,17 +208,13 @@ void read_commands(char argv0[], char filename[]) {
             else if (strcmp(operationName, "wait") == 0) {
                 sscanf(line, "\t%iusecs %s", &next_operation_slot->time, next_operation_slot->name);
             }
-            current_process->operation_count++;
+			current_command->syscall_count++;
         }
     }
     fclose(file);
 }
+void execute_commands(void) {
 
-
-//  ----------------------------------------------------------------------
-
-void execute_commands(void)
-{
 }
 
 //  ----------------------------------------------------------------------
@@ -205,8 +235,12 @@ int main(int argc, char *argv[]) {
 //  EXECUTE COMMANDS, STARTING AT FIRST IN command-file, UNTIL NONE REMAIN
     execute_commands();
 
-	// TEST CODE: Print devices to console
-	printf("Loaded devices:\n");
+//  PRINT THE PROGRAM'S RESULTS
+    printf("measurements  %i  %i\n", 0, 0);
+
+// TEST CODE
+	// #1: Print devices to console
+	printf("\nLoaded devices:\n");
 	for (int i = 0; i < device_count; ++i) {
 		printf("\tDevice name: %s, Read speed: %llu Bps, Write speed: %llu, Priority: %i Bps\n",
 			   devices_array[i].name,
@@ -214,24 +248,21 @@ int main(int argc, char *argv[]) {
 			   devices_array[i].writeSpeed,
 			   devices_array[i].priority);
 	}
-	printf("Time Quantum: %i\n", time_quantum);
+	printf("\nTime Quantum: %i\n", time_quantum);
 
-	// TEST CODE: Print defined processes to the console
-	for (int i = 0; i < process_count; ++i) {
-		printf("Process name: %s\n", processes[i].name);
-		for (int j = 0; j < processes[i].operation_count; ++j) {
+	// #2: Print commands to the console
+	for (int i = 0; i < command_count; ++i) {
+		printf("\nCommand name: %s\n", command_definitions[i].name);
+		for (int j = 0; j < command_definitions[i].syscall_count; ++j) {
 			printf("\tOperation: %s, Time: %i, Device: %s, Bytes: %llu, Duration: %i, Child Process: %s\n",
-				   processes[i].operations[j].name,
-				   processes[i].operations[j].time,
-				   processes[i].operations[j].device_name,
-				   processes[i].operations[j].bytes,
-				   processes[i].operations[j].duration,
-				   processes[i].operations[j].child_process_name);
+				   command_definitions[i].syscalls[j].name,
+				   command_definitions[i].syscalls[j].time,
+				   command_definitions[i].syscalls[j].device_name,
+				   command_definitions[i].syscalls[j].bytes,
+				   command_definitions[i].syscalls[j].duration,
+				   command_definitions[i].syscalls[j].child_process_name);
 		}
 	}
-
-//  PRINT THE PROGRAM'S RESULTS
-    printf("measurements  %i  %i\n", 0, 0);
 
     exit(EXIT_SUCCESS);
 }
