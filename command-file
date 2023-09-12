@@ -1,27 +1,53 @@
 #
-shortsleep
-	10usecs    sleep   1000000usecs
+a
+	20usecs   spawn   b
 	50usecs    exit
 #
-longsleep
-	10usecs    sleep   5000000usecs
-	50usecs    exit
+b
+	700usecs   sleep 5
+	850usecs    spawn   c
+	900usecs    exit
 #
-cal
-	80usecs    write   terminal 2000B
-	90usecs    exit
+c
+	30usecs   spawn   d
+	40usecs   read terminal 20B
+	50usecs   sleep 50
+	80usecs   wait
+	100usecs  exit
 #
-copyfile
-	200usecs   read    hd       48000B
-	300usecs   write   hd       48000B
-	600usecs   read    hd       21000B
-	700usecs   write   hd       21000B
-	1000usecs  exit
+d
+	30usecs	  spawn e
+	35usecs   wait
+	40usecs   read terminal 20B
+	50usecs   write hd 200B
+	60usecs   spawn f
+	70usecs   wait
+	100usecs  exit
 #
-shell
-	100usecs   write   terminal 10B
-	120usecs   read    terminal 4B
-	220usecs   spawn   cal
-	230usecs   wait
-	1000usecs  exit
+e
+	20usecs   wait
+	40usecs   read hd 2000B
+	100usecs  exit
 #
+f
+	30usecs	  spawn g
+	35usecs   wait
+	40usecs   read terminal 20B
+	50usecs   write hd 200B
+	60usecs   spawn h
+	70usecs   wait
+	100usecs  exit
+#
+g
+	35usecs   wait
+	40usecs   read terminal 20B
+	50usecs   write hd 200B
+	70usecs   wait
+	100usecs  exit
+#
+h
+	35usecs   wait
+	40usecs   read usb3.1 200B
+	50usecs   write hd 200B
+	70usecs   wait
+	100usecs  exit
